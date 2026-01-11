@@ -1,0 +1,29 @@
+name: Daily DesiDime Scrape v1
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # daily at 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python scripts/scrape_index.py
+      - run: python scripts/scrape_deal.py
+      - run: python scripts/clean_and_score.py
+
+      - run: |
+          git config user.name "automation"
+          git config user.email "bot@github.com"
+          git add data/
+          git commit -m "Daily deal update v1" || echo "No changes"
+          git push
