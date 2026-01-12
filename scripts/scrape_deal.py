@@ -1,57 +1,68 @@
 import os
-import requests
+import sys
 import pandas as pd
+import requests
 from bs4 import BeautifulSoup
-from pathlib import Path
-from urllib.parse import urlparse
+from datetime import datetime
 
-DATA_DIR = Path("data")
-INDEX_FILE = DATA_DIR / "deals_index.csv"
-RAW_FILE = DATA_DIR / "deals_raw.csv"
+INDEX_FILE = "data/deals_index.csv"
+RAW_FILE = "data/deals_raw.csv"
 
+# Load or bootstrap index
 if not os.path.exists(INDEX_FILE):
-    print(f"{INDEX_FILE} not found. Nothing to scrape yet.")
-    exit(0)
+    print(f"{INDEX_FILE} not found. Bootstrapping first run.")
+    pd.DataFrame(columns=["deal_id", "source", "first_seen_date"]).to_csv(INDEX_FILE, index=False)
 
 index_df = pd.read_csv(INDEX_FILE)
+seen_deal_ids = set(index_df["deal_id"].tolist()) if "deal_id" in index_df.columns else set()
 
-existing = set()
-if RAW_FILE.exists():
-    existing = set(pd.read_csv(RAW_FILE)["deal_id"].astype(str))
+# URL to scrape
+BASE_URL = "https://www.desidime.com/new"
+print(f"Scraping deals from {BASE_URL}")
 
-rows = []
+response = requests.get(BASE_URL)
+if response.status_code != 200:
+    print(f"Failed to fetch {BASE_URL}: {response.status_code}")
+    sys.exit(1)
 
-for _, row in index_df.iterrows():
-    if row.deal_id in existing:
+soup = BeautifulSoup(response.text, "html.parser")
+deal_cards = soup.find_all("a", class_="deal-card-link")
+
+if not deal_cards:
+    print("No deal cards found on the page.")
+    sys.exit(0)
+
+# Collect deals
+deals = []
+for card in deal_cards:
+    deal_url = card.get("href")
+    if not deal_url:
         continue
+    deal_id = deal_url.strip("/").split("/")[-1]
+    if deal_id in seen_deal_ids:
+        print(f"Encountered already-seen deal ID {deal_id}, stopping crawl.")
+        break
 
-    html = requests.get(row.deal_url, timeout=15).text
-    soup = BeautifulSoup(html, "html.parser")
+    title_tag = card.find("h3")
+    title = title_tag.text.strip() if title_tag else "Unknown title"
+    platform = "Unknown"
+    if "amazon" in deal_url.lower():
+        platform = "Amazon"
+    elif "flipkart" in deal_url.lower():
+        platform = "Flipkart"
 
-    buy = soup.select_one("a[href^='http']")
-    buy_url = buy["href"] if buy else ""
-
-    platform = ""
-    if buy_url:
-        platform = urlparse(buy_url).netloc.replace("www.", "").split(".")[0]
-
-    price = soup.find(text=lambda x: x and "₹" in x)
-
-    rows.append({
-        "deal_id": row.deal_id,
-        "title": row.title,
+    deals.append({
+        "deal_id": deal_id,
+        "title": title,
         "platform": platform,
-        "buy_url": buy_url,
-        "raw_price_text": price.strip() if price else ""
+        "deal_url": deal_url,
+        "scrape_date": datetime.now().strftime("%Y-%m-%d")
     })
 
-if rows:
-    df_new = pd.DataFrame(rows)
-    if RAW_FILE.exists():
-        df_old = pd.read_csv(RAW_FILE)
-        df = pd.concat([df_old, df_new], ignore_index=True)
-    else:
-        df = df_new
-
+# Save raw data if any new deals found
+if deals:
+    df = pd.DataFrame(deals)
     df.to_csv(RAW_FILE, index=False)
-
+    print(f"Saved {len(df)} new deals to {RAW_FILE}")
+else:
+    print("No new deals scraped. Nothing to save.")
