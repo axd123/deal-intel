@@ -1,3 +1,4 @@
+import os
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -7,6 +8,10 @@ from urllib.parse import urlparse
 DATA_DIR = Path("data")
 INDEX_FILE = DATA_DIR / "deals_index.csv"
 RAW_FILE = DATA_DIR / "deals_raw.csv"
+
+if not os.path.exists(INDEX_FILE):
+    print(f"{INDEX_FILE} not found. Nothing to scrape yet.")
+    exit(0)
 
 index_df = pd.read_csv(INDEX_FILE)
 
