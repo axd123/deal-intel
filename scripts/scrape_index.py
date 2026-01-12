@@ -11,7 +11,8 @@ if not os.path.exists(INDEX_FILE):
 
 # Load existing index
 index_df = pd.read_csv(INDEX_FILE)
-print(f"Loaded index with {len(index_df)} known deals.")
+seen_deal_ids = set(index_df["deal_id"].tolist()) if "deal_id" in index_df.columns else set()
+print(f"Loaded index with {len(seen_deal_ids)} known deals.")
 
 # Normally, here you might update the index with new deal IDs after scraping
-# For v1.1, we leave this as placeholder logic
+# Placeholder logic; actual updates happen in scrape_deal.py
